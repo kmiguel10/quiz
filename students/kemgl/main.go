@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 func main() {
 	csvFilename := flag.String("csv", "problems.csv", "a csv file in the format of 'question,answer'")
+	timeLimit := flag.Int("limit", 10, "the time limit for the quiz in seconds")
 	flag.Parse()
 
 	file, err := os.Open(*csvFilename)
@@ -29,21 +31,38 @@ func main() {
 
 	problems := parseLines(lines)
 
+	//create timer
+	timer := time.NewTimer(time.Duration(*timeLimit) * time.Second)
+	//<-timer.C //wait for a message from this channel, so code is blocked until we get a message from this channel
+
 	//keep track of correct answers
 	correct := 0
 
+problemloop:
 	//print out the problems line by line for the users
 	for i, p := range problems {
-		fmt.Printf("Problem #%d: %s = \n", i+1, p.q)
-		var answer string
-		fmt.Scanf("%s\n", &answer) //we use & because we need to be able to access the answer once we have it
-		if answer == p.a {
-			correct++
+		fmt.Printf("Problem #%d: %s = ", i+1, p.q)
+		answerCh := make(chan string) //create a channel to send answers
+
+		//a go routine to listen to answers
+		go func() {
+			var answer string
+			fmt.Scanf("%s\n", &answer) //we use & because we need to be able to access the answer once we have it
+			answerCh <- answer
+		}()
+		//keep presenting problems until we receive a message from the channel which means that time is up
+		//now we only have 2 options, which is receiving data from 2 channels.... if the timer is up or if there is answer to a question
+		select {
+		case <-timer.C:
+			fmt.Println()
+			break problemloop
+		case answer := <-answerCh: //if there is an answer
+			if answer == p.a {
+				correct++
+			}
 		}
 	}
-
 	fmt.Printf("You scored %d out of %d.\n", correct, len(problems))
-
 }
 
 func parseLines(lines [][]string) []problem {
